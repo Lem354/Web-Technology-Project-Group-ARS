@@ -2,7 +2,7 @@ import { Router } from 'express'
 import type { Response } from 'express'
 import { randomUUID } from 'node:crypto'
 import { sessions } from '../store.js'
-import type { ApiError, Session, SessionSummary } from '../types.js'
+import type { ApiError, Participant, Session, SessionSummary } from '../types.js'
 
 export const sessionsRouter = Router()
 
@@ -60,5 +60,66 @@ sessionsRouter.delete('/:id', (req, res) => {
     sendError(res, 404, 'Session nicht gefunden')
     return
   }
+  res.status(204).end()
+})
+
+// Todo 10: POST /sessions/:id/participants – Session beitreten
+// Idempotent: Existiert die ID schon, wird kein zweiter Eintrag erstellt (wegen StrictMode)
+sessionsRouter.post('/:id/participants', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  // Body auslesen. Wir wissen noch nicht, ob die Werte stimmen, deshalb "unknown"
+  const { id, name } = (req.body ?? {}) as { id?: unknown; name?: unknown }
+
+  if (typeof id !== 'string' || id.trim() === '') {
+    sendError(res, 400, 'Teilnehmer-ID fehlt')
+    return
+  }
+  if (typeof name !== 'string' || name.trim() === '') {
+    sendError(res, 400, 'Name darf nicht leer sein')
+    return
+  }
+
+  const existing = session.participants.find((p) => p.id === id)
+  if (existing) {
+    // Schon in der Session: nur Name und Zeitstempel aktualisieren
+    existing.name = name.trim()
+    existing.lastSeen = Date.now()
+  } else {
+    // Neu: Teilnehmer hinzufügen, noch ohne Stimme
+    const participant: Participant = {
+      id,
+      name: name.trim(),
+      vote: null,
+      lastSeen: Date.now(),
+    }
+    session.participants.push(participant)
+  }
+
+  res.json(session)
+})
+
+// Todo 11: DELETE /sessions/:id/participants/:participantId – Session verlassen
+sessionsRouter.delete('/:id/participants/:participantId', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  const countBefore = session.participants.length
+  session.participants = session.participants.filter(
+    (p) => p.id !== req.params.participantId,
+  )
+
+  if (session.participants.length === countBefore) {
+    sendError(res, 404, 'Teilnehmer nicht gefunden')
+    return
+  }
+
   res.status(204).end()
 })
