@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { sessions } from './store.js'
+import { sessionsRouter } from './routes/sessions.js' 
 
 const app = express()
 const PORT = 3000
@@ -14,6 +15,9 @@ app.use(express.json())
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', sessions: sessions.size })
 })
+
+// Alle Routen, die mit /sessions beginnen, behandelt der sessionsRouter
+app.use('/sessions', sessionsRouter)
 
 app.listen(PORT, () => {
   console.log(`Server läuft auf http://localhost:${PORT}`)
