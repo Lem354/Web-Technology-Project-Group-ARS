@@ -2,7 +2,15 @@ import { Router } from 'express'
 import type { Response } from 'express'
 import { randomUUID } from 'node:crypto'
 import { sessions } from '../store.js'
-import type { ApiError, Participant, Session, SessionSummary } from '../types.js'
+import { DECKS } from '../decks.js'
+import type {
+  ApiError,
+  Card,
+  DeckType,
+  Participant,
+  Session,
+  SessionSummary,
+} from '../types.js'
 
 export const sessionsRouter = Router()
 
@@ -19,6 +27,12 @@ function createSessionId(): string {
     id = randomUUID().slice(0, 8)
   } while (sessions.has(id))
   return id
+}
+
+// Prüft, ob eine Karte zum Deck gehört.
+// "card is Card" sagt TypeScript: Wenn true, ist card danach vom Typ Card.
+function isCardInDeck(card: string, deckType: DeckType): card is Card {
+  return DECKS[deckType].cards.some((c) => c === card)
 }
 
 // Todo 7: GET /sessions – Liste aller Sessions (nur ID und Teilnehmerzahl)
@@ -122,4 +136,44 @@ sessionsRouter.delete('/:id/participants/:participantId', (req, res) => {
   }
 
   res.status(204).end()
+})
+
+// Todo 12: PUT /sessions/:id/vote – Karte wählen (oder mit null zurückziehen)
+sessionsRouter.put('/:id/vote', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  const { participantId, card } = (req.body ?? {}) as {
+    participantId?: unknown
+    card?: unknown
+  }
+
+  if (typeof participantId !== 'string' || participantId.trim() === '') {
+    sendError(res, 400, 'Teilnehmer-ID fehlt')
+    return
+  }
+
+  // card muss null sein (Stimme zurückziehen) oder eine Karte aus dem aktiven Deck
+  if (card !== null && (typeof card !== 'string' || !isCardInDeck(card, session.deckType))) {
+    sendError(res, 400, 'Karte gehört nicht zum aktiven Deck')
+    return
+  }
+
+  const participant = session.participants.find((p) => p.id === participantId)
+  if (!participant) {
+    sendError(res, 404, 'Teilnehmer nicht gefunden')
+    return
+  }
+
+  if (session.revealed) {
+    sendError(res, 409, 'Karten sind schon aufgedeckt. Zuerst eine neue Runde starten.')
+    return
+  }
+
+  participant.vote = card
+  participant.lastSeen = Date.now()
+  res.json(session)
 })
