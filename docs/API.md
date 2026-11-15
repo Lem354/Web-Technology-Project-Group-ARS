@@ -1,6 +1,11 @@
 # API-Übersicht
 
-Der Server läuft auf `http://localhost:3000`. Alle Daten werden als JSON gesendet und empfangen.
+Der Server läuft auf `http://localhost:3000`. Alle Routen beginnen mit `/api`.
+Das Frontend fetcht immer relativ, z. B. `fetch('/api/sessions')`. Der Vite-Dev-Server leitet
+alle Requests auf `/api` an den Server weiter (Proxy in `client/vite.config.ts`).
+Darum gibt es keine CORS-Probleme, und im Code steht nirgends eine feste Server-Adresse.
+
+Alle Daten werden als JSON gesendet und empfangen.
 Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind alle Sessions weg.
 
 ## Allgemeine Regeln
@@ -24,26 +29,34 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 
 ## Routen
 
+### Status
+
+| Methode | Route         | Body | Antwort                    | Fehler |
+| ------- | ------------- | ---- | -------------------------- | ------ |
+| GET     | `/api/health` | –    | 200 `{ status, sessions }` | –      |
+
+- **GET /api/health** zeigt, ob der Server läuft und wie viele Sessions gerade existieren.
+
 ### Sessions
 
-| Methode | Route           | Body | Antwort                | Fehler |
-| ------- | --------------- | ---- | ---------------------- | ------ |
-| GET     | `/sessions`     | –    | 200 `SessionSummary[]` | –      |
-| POST    | `/sessions`     | –    | 201 `Session`          | –      |
-| GET     | `/sessions/:id` | –    | 200 `Session`          | 404    |
-| DELETE  | `/sessions/:id` | –    | 204                    | 404    |
+| Methode | Route               | Body | Antwort                | Fehler |
+| ------- | ------------------- | ---- | ---------------------- | ------ |
+| GET     | `/api/sessions`     | –    | 200 `SessionSummary[]` | –      |
+| POST    | `/api/sessions`     | –    | 201 `Session`          | –      |
+| GET     | `/api/sessions/:id` | –    | 200 `Session`          | 404    |
+| DELETE  | `/api/sessions/:id` | –    | 204                    | 404    |
 
-- **GET /sessions** liefert für die Home-Seite nur ID und Teilnehmerzahl, nicht die ganze Session.
-- **POST /sessions** erzeugt die ID auf dem Server. Neue Sessions starten mit dem Fibonacci-Deck.
-- **DELETE /sessions/:id** funktioniert auch, wenn noch Leute in der Session sind.
+- **GET /api/sessions** liefert für die Home-Seite nur ID und Teilnehmerzahl, nicht die ganze Session.
+- **POST /api/sessions** erzeugt die ID auf dem Server. Neue Sessions starten mit dem Fibonacci-Deck.
+- **DELETE /api/sessions/:id** funktioniert auch, wenn noch Leute in der Session sind.
   Deren nächstes Polling bekommt dann 404 und zeigt eine Fehlermeldung.
 
 ### Teilnehmende
 
-| Methode | Route                                       | Body           | Antwort       | Fehler   |
-| ------- | ------------------------------------------- | -------------- | ------------- | -------- |
-| POST    | `/sessions/:id/participants`                | `{ id, name }` | 200 `Session` | 400, 404 |
-| DELETE  | `/sessions/:id/participants/:participantId` | –              | 204           | 404      |
+| Methode | Route                                           | Body           | Antwort       | Fehler   |
+| ------- | ----------------------------------------------- | -------------- | ------------- | -------- |
+| POST    | `/api/sessions/:id/participants`                | `{ id, name }` | 200 `Session` | 400, 404 |
+| DELETE  | `/api/sessions/:id/participants/:participantId` | –              | 204           | 404      |
 
 - **POST** ist idempotent: Existiert die `id` schon, wird kein zweiter Eintrag erstellt,
   sondern nur der Name aktualisiert. Grund: React StrictMode führt den Beitritt im
@@ -52,12 +65,12 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 
 ### Spielablauf
 
-| Methode | Route                  | Body                      | Antwort       | Fehler        |
-| ------- | ---------------------- | ------------------------- | ------------- | ------------- |
-| PUT     | `/sessions/:id/vote`   | `{ participantId, card }` | 200 `Session` | 400, 404, 409 |
-| PUT     | `/sessions/:id/deck`   | `{ deckType }`            | 200 `Session` | 400, 404      |
-| POST    | `/sessions/:id/reveal` | –                         | 200 `Session` | 404           |
-| POST    | `/sessions/:id/reset`  | –                         | 200 `Session` | 404           |
+| Methode | Route                      | Body                      | Antwort       | Fehler        |
+| ------- | -------------------------- | ------------------------- | ------------- | ------------- |
+| PUT     | `/api/sessions/:id/vote`   | `{ participantId, card }` | 200 `Session` | 400, 404, 409 |
+| PUT     | `/api/sessions/:id/deck`   | `{ deckType }`            | 200 `Session` | 400, 404      |
+| POST    | `/api/sessions/:id/reveal` | –                         | 200 `Session` | 404           |
+| POST    | `/api/sessions/:id/reset`  | –                         | 200 `Session` | 404           |
 
 - **vote:** `card` muss im aktiven Deck vorkommen, sonst 400. Nach dem Aufdecken gibt es 409.
   Mit `card: null` kann man seine Stimme zurückziehen.

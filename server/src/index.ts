@@ -6,18 +6,18 @@ import { sessionsRouter } from './routes/sessions.js'
 const app = express()
 const PORT = 3000
 
-// Erlaubt Anfragen vom Frontend (Vite läuft auf einem anderen Port)
+// Dank Vite-Proxy (/api → localhost:3000) eigentlich nicht mehr nötig, schadet aber nicht
 app.use(cors())
 // Liest JSON aus dem Body von POST/PUT-Anfragen
 app.use(express.json())
 
 // Test-Route: Zeigt, ob der Server läuft
-app.get('/health', (_req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', sessions: sessions.size })
 })
 
-// Alle Routen, die mit /sessions beginnen, behandelt der sessionsRouter
-app.use('/sessions', sessionsRouter)
+// Alle Routen, die mit /api/sessions beginnen, behandelt der sessionsRouter
+app.use('/api/sessions', sessionsRouter)
 
 app.listen(PORT, () => {
   console.log(`Server läuft auf http://localhost:${PORT}`)
