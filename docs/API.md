@@ -75,7 +75,8 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 - **vote:** `card` muss im aktiven Deck vorkommen, sonst 400. Nach dem Aufdecken gibt es 409.
   Mit `card: null` kann man seine Stimme zurückziehen.
 - **deck:** Wechselt das Deck für alle. Setzt alle Stimmen zurück und deckt die Karten zu,
-  weil die alten Karten nicht ins neue Deck passen.
+  weil die alten Karten nicht ins neue Deck passen. Wird dasselbe Deck nochmals gewählt,
+  ändert sich nichts (die Stimmen bleiben). Unbekanntes Deck → 400.
 - **reveal:** Deckt alle Karten auf.
 - **reset:** Setzt alle Stimmen auf `null` und `revealed` auf `false`. Das Deck bleibt.
 

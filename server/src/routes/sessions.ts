@@ -35,7 +35,13 @@ function isCardInDeck(card: string, deckType: DeckType): card is Card {
   return DECKS[deckType].cards.some((c) => c === card)
 }
 
-// Todo 7: GET /sessions – Liste aller Sessions (nur ID und Teilnehmerzahl)
+// Prüft, ob ein Wert ein gültiger DeckType ist (z. B. 'fibonacci' oder 'tshirt').
+// Object.hasOwn statt "in", damit z. B. 'toString' nicht als Deck durchgeht.
+function isDeckType(value: unknown): value is DeckType {
+  return typeof value === 'string' && Object.hasOwn(DECKS, value)
+}
+
+// Todo 7: GET /api/sessions – Liste aller Sessions (nur ID und Teilnehmerzahl)
 sessionsRouter.get('/', (_req, res) => {
   const list: SessionSummary[] = [...sessions.values()].map((session) => ({
     id: session.id,
@@ -44,7 +50,7 @@ sessionsRouter.get('/', (_req, res) => {
   res.json(list)
 })
 
-// Todo 6: POST /sessions – Neue Session erstellen
+// Todo 6: POST /api/sessions – Neue Session erstellen
 sessionsRouter.post('/', (_req, res) => {
   const session: Session = {
     id: createSessionId(),
@@ -57,7 +63,7 @@ sessionsRouter.post('/', (_req, res) => {
   res.status(201).json(session)
 })
 
-// Todo 8: GET /sessions/:id – Eine Session abrufen
+// Todo 8: GET /api/sessions/:id – Eine Session abrufen
 sessionsRouter.get('/:id', (req, res) => {
   const session = sessions.get(req.params.id)
   if (!session) {
@@ -67,7 +73,7 @@ sessionsRouter.get('/:id', (req, res) => {
   res.json(session)
 })
 
-// Todo 9: DELETE /sessions/:id – Session löschen (auch wenn noch Leute drin sind)
+// Todo 9: DELETE /api/sessions/:id – Session löschen (auch wenn noch Leute drin sind)
 sessionsRouter.delete('/:id', (req, res) => {
   const deleted = sessions.delete(req.params.id)
   if (!deleted) {
@@ -77,7 +83,7 @@ sessionsRouter.delete('/:id', (req, res) => {
   res.status(204).end()
 })
 
-// Todo 10: POST /sessions/:id/participants – Session beitreten
+// Todo 10: POST /api/sessions/:id/participants – Session beitreten
 // Idempotent: Existiert die ID schon, wird kein zweiter Eintrag erstellt (wegen StrictMode)
 sessionsRouter.post('/:id/participants', (req, res) => {
   const session = sessions.get(req.params.id)
@@ -117,7 +123,7 @@ sessionsRouter.post('/:id/participants', (req, res) => {
   res.json(session)
 })
 
-// Todo 11: DELETE /sessions/:id/participants/:participantId – Session verlassen
+// Todo 11: DELETE /api/sessions/:id/participants/:participantId – Session verlassen
 sessionsRouter.delete('/:id/participants/:participantId', (req, res) => {
   const session = sessions.get(req.params.id)
   if (!session) {
@@ -138,7 +144,7 @@ sessionsRouter.delete('/:id/participants/:participantId', (req, res) => {
   res.status(204).end()
 })
 
-// Todo 12: PUT /sessions/:id/vote – Karte wählen (oder mit null zurückziehen)
+// Todo 12: PUT /api/sessions/:id/vote – Karte wählen (oder mit null zurückziehen)
 sessionsRouter.put('/:id/vote', (req, res) => {
   const session = sessions.get(req.params.id)
   if (!session) {
@@ -175,5 +181,37 @@ sessionsRouter.put('/:id/vote', (req, res) => {
 
   participant.vote = card
   participant.lastSeen = Date.now()
+  res.json(session)
+})
+
+// Todo 13: PUT /api/sessions/:id/deck – Deck für alle wechseln
+sessionsRouter.put('/:id/deck', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  const { deckType } = (req.body ?? {}) as { deckType?: unknown }
+
+  if (!isDeckType(deckType)) {
+    sendError(res, 400, 'Unbekanntes Deck')
+    return
+  }
+
+  // Gleiches Deck nochmals gewählt: nichts ändern, damit keine Stimmen verloren gehen
+  if (session.deckType === deckType) {
+    res.json(session)
+    return
+  }
+
+  session.deckType = deckType
+
+  // Alte Karten passen nicht ins neue Deck: alle Stimmen löschen und zudecken
+  for (const participant of session.participants) {
+    participant.vote = null
+  }
+  session.revealed = false
+
   res.json(session)
 })
