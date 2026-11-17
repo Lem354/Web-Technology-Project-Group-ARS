@@ -34,6 +34,23 @@ export interface Session {
   createdAt: number // Zeitpunkt der Erstellung
 }
 
+// Antwort-Types: So sieht der Client die Daten (siehe toSessionView in sessions.ts).
+// Vor dem Aufdecken ist vote immer null, damit niemand schummeln kann.
+export interface ParticipantView {
+  id: string
+  name: string
+  hasVoted: boolean // hat schon eine Karte gewählt?
+  vote: Card | null // erst nach dem Aufdecken sichtbar
+}
+
+export interface SessionView {
+  id: string
+  deckType: DeckType
+  participants: ParticipantView[]
+  revealed: boolean
+  createdAt: number
+}
+
 // Kurzform für die Liste auf der Home-Seite
 export interface SessionSummary {
   id: string

@@ -10,6 +10,7 @@ import type {
   Participant,
   Session,
   SessionSummary,
+  SessionView,
 } from '../types.js'
 
 export const sessionsRouter = Router()
@@ -41,6 +42,26 @@ function isDeckType(value: unknown): value is DeckType {
   return typeof value === 'string' && Object.hasOwn(DECKS, value)
 }
 
+// Wandelt eine Session in die Antwort für den Client um.
+// Solange die Karten nicht aufgedeckt sind, ist vote immer null (sonst könnte man
+// im Netzwerk-Tab des Browsers die Karten der anderen sehen und schummeln).
+// hasVoted zeigt trotzdem, wer schon abgestimmt hat.
+// lastSeen braucht nur der Server, darum wird es nicht mitgeschickt.
+function toSessionView(session: Session): SessionView {
+  return {
+    id: session.id,
+    deckType: session.deckType,
+    revealed: session.revealed,
+    createdAt: session.createdAt,
+    participants: session.participants.map((p) => ({
+      id: p.id,
+      name: p.name,
+      hasVoted: p.vote !== null,
+      vote: session.revealed ? p.vote : null,
+    })),
+  }
+}
+
 // Todo 7: GET /api/sessions – Liste aller Sessions (nur ID und Teilnehmerzahl)
 sessionsRouter.get('/', (_req, res) => {
   const list: SessionSummary[] = [...sessions.values()].map((session) => ({
@@ -60,7 +81,7 @@ sessionsRouter.post('/', (_req, res) => {
     createdAt: Date.now(),
   }
   sessions.set(session.id, session)
-  res.status(201).json(session)
+  res.status(201).json(toSessionView(session))
 })
 
 // Todo 8: GET /api/sessions/:id – Eine Session abrufen
@@ -70,7 +91,7 @@ sessionsRouter.get('/:id', (req, res) => {
     sendError(res, 404, 'Session nicht gefunden')
     return
   }
-  res.json(session)
+  res.json(toSessionView(session))
 })
 
 // Todo 9: DELETE /api/sessions/:id – Session löschen (auch wenn noch Leute drin sind)
@@ -120,7 +141,7 @@ sessionsRouter.post('/:id/participants', (req, res) => {
     session.participants.push(participant)
   }
 
-  res.json(session)
+  res.json(toSessionView(session))
 })
 
 // Todo 11: DELETE /api/sessions/:id/participants/:participantId – Session verlassen
@@ -181,7 +202,7 @@ sessionsRouter.put('/:id/vote', (req, res) => {
 
   participant.vote = card
   participant.lastSeen = Date.now()
-  res.json(session)
+  res.json(toSessionView(session))
 })
 
 // Todo 13: PUT /api/sessions/:id/deck – Deck für alle wechseln
@@ -201,7 +222,7 @@ sessionsRouter.put('/:id/deck', (req, res) => {
 
   // Gleiches Deck nochmals gewählt: nichts ändern, damit keine Stimmen verloren gehen
   if (session.deckType === deckType) {
-    res.json(session)
+    res.json(toSessionView(session))
     return
   }
 
@@ -213,7 +234,7 @@ sessionsRouter.put('/:id/deck', (req, res) => {
   }
   session.revealed = false
 
-  res.json(session)
+  res.json(toSessionView(session))
 })
 
 // Todo 14: POST /api/sessions/:id/reveal – Alle Karten aufdecken
@@ -224,7 +245,7 @@ sessionsRouter.post('/:id/reveal', (req, res) => {
     return
   }
    session.revealed = true
-  res.json(session)
+  res.json(toSessionView(session))
 })
 
 // Todo 15: POST /api/sessions/:id/reset – Neue Runde starten
@@ -241,5 +262,5 @@ sessionsRouter.post('/:id/reset', (req, res) => {
   }
   session.revealed = false
 
-  res.json(session)
+  res.json(toSessionView(session))
 })
