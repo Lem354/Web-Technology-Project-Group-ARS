@@ -1,43 +1,46 @@
-// Domain types: how the server stores the data.
+// Gemeinsame Types für Server und Client.
+// WICHTIG: Diese Datei muss identisch sein mit server/src/types.ts
 
-export type DeckId = 'fibonacci' | 'tshirt'
+// Welche Decks es gibt
+export type DeckType = 'fibonacci' | 'tshirt'
 
-export interface Participant {
-  id: string
-  name: string
-  // null = not voted yet
-  vote: string | null
+// Mögliche Karten pro Deck
+export type FibonacciCard =
+  '0' | '1' | '2' | '3' | '5' | '8' | '13' | '21' | '?'
+export type TShirtCard = 'XS' | 'S' | 'M' | 'L' | 'XL'
+export type Card = FibonacciCard | TShirtCard
+
+// Ein Deck mit Name und allen Karten
+export interface Deck {
+  type: DeckType
+  label: string
+  cards: Card[]
 }
 
+// Eine Person am Pokertisch
+export interface Participant {
+  id: string // vom Client erzeugt (wegen StrictMode)
+  name: string
+  vote: Card | null // null = hat noch nicht abgestimmt
+  lastSeen: number // Zeitstempel, brauchen wir später für die Karteileichen
+}
+
+// Der komplette Zustand einer Session
 export interface Session {
   id: string
-  deck: DeckId
-  revealed: boolean
+  deckType: DeckType
   participants: Participant[]
+  revealed: boolean // sind die Karten aufgedeckt?
+  createdAt: number // Zeitpunkt der Erstellung
 }
 
-// Response types (DTOs): how the client sees the data.
-
+// Kurzform für die Liste auf der Home-Seite
 export interface SessionSummary {
   id: string
   participantCount: number
 }
 
-export interface ParticipantView {
-  id: string
-  name: string
-  hasVoted: boolean
-  // Always null until the round is revealed (see views.ts)
-  vote: string | null
-}
-
-export interface SessionView {
-  id: string
-  deck: DeckId
-  revealed: boolean
-  participants: ParticipantView[]
-}
-
-export interface ErrorResponse {
+// Einheitliche Fehlerantwort vom Server
+export interface ApiError {
   error: string
 }

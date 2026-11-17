@@ -1,267 +1,245 @@
-// All routes of the Scrum Poker backend. The server is complete:
-//   - list, create, get and delete sessions
-//   - add (join) and remove (leave) participants
-//   - pick a card, reveal / new round, switch deck
-// The README lists all routes.
-
 import { Router } from 'express'
-import type { Request, Response } from 'express'
-import {
-  addParticipant,
-  clearVotes,
-  createSession,
-  deleteSession,
-  findParticipant,
-  findParticipantByName,
-  findSession,
-  listSessions,
-  removeParticipant,
-} from '../store.ts'
-import { DECKS, isDeckId } from '../decks.ts'
-import { toParticipantView, toSessionSummary, toSessionView } from '../views.ts'
+import type { Response } from 'express'
+import { randomUUID } from 'node:crypto'
+import { sessions } from '../store.js'
+import { DECKS } from '../decks.js'
 import type {
-  ErrorResponse,
-  ParticipantView,
+  ApiError,
+  Card,
+  DeckType,
+  Participant,
+  Session,
   SessionSummary,
-  SessionView,
-} from '../types.ts'
+} from '../types.js'
 
 export const sessionsRouter = Router()
 
-// Express reads path parameters as strings (Express 5 types them that way).
-// These params types tell TypeScript which parameters a route has.
-interface SessionParams {
-  sessionId: string
+// Hilfsfunktion: Schickt einen Fehler immer im gleichen Format { error }
+function sendError(res: Response, status: number, message: string) {
+  const body: ApiError = { error: message }
+  res.status(status).json(body)
 }
 
-interface ParticipantParams extends SessionParams {
-  participantId: string
+// Erzeugt eine kurze, eindeutige Session-ID (z. B. "a3f9c2d1")
+function createSessionId(): string {
+  let id: string
+  do {
+    id = randomUUID().slice(0, 8)
+  } while (sessions.has(id))
+  return id
 }
 
-// All sessions as a summary (ID + participant count) for the home page.
-sessionsRouter.get(
-  '/sessions',
-  (_req: Request, res: Response<SessionSummary[]>) => {
-    const sessions = listSessions()
-    const summaries = sessions.map(toSessionSummary)
-    res.status(200).json(summaries)
-  },
-)
+// Prüft, ob eine Karte zum Deck gehört.
+// "card is Card" sagt TypeScript: Wenn true, ist card danach vom Typ Card.
+function isCardInDeck(card: string, deckType: DeckType): card is Card {
+  return DECKS[deckType].cards.some((c) => c === card)
+}
 
-// Create a new session. The server generates the ID, not the client.
-sessionsRouter.post(
-  '/sessions',
-  (_req: Request, res: Response<SessionView>) => {
-    const session = createSession()
-    const view = toSessionView(session)
-    res.status(201).json(view)
-  },
-)
+// Prüft, ob ein Wert ein gültiger DeckType ist (z. B. 'fibonacci' oder 'tshirt').
+// Object.hasOwn statt "in", damit z. B. 'toString' nicht als Deck durchgeht.
+function isDeckType(value: unknown): value is DeckType {
+  return typeof value === 'string' && Object.hasOwn(DECKS, value)
+}
 
-// Get one session. The frontend requests this regularly (polling).
-sessionsRouter.get(
-  '/sessions/:sessionId',
-  (req: Request<SessionParams>, res: Response<SessionView | ErrorResponse>) => {
-    const session = findSession(req.params.sessionId)
-    if (!session) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
-    }
-    const view = toSessionView(session)
-    res.status(200).json(view)
-  },
-)
+// Todo 7: GET /api/sessions – Liste aller Sessions (nur ID und Teilnehmerzahl)
+sessionsRouter.get('/', (_req, res) => {
+  const list: SessionSummary[] = [...sessions.values()].map((session) => ({
+    id: session.id,
+    participantCount: session.participants.length,
+  }))
+  res.json(list)
+})
 
-// Delete a session, even if participants are still in it.
-// 204 = success without a response body.
-sessionsRouter.delete(
-  '/sessions/:sessionId',
-  // On success (204) there is no body, so only the error type appears.
-  (req: Request<SessionParams>, res: Response<ErrorResponse>) => {
-    const wasDeleted = deleteSession(req.params.sessionId)
-    if (!wasDeleted) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
-    }
-    res.status(204).end()
-  },
-)
-
-// Reads a field from an unknown body. Returns undefined if the field is missing.
-function readField(body: unknown, field: string): unknown {
-  const isObject = typeof body === 'object' && body !== null
-  if (!isObject || !(field in body)) {
-    return undefined
+// Todo 6: POST /api/sessions – Neue Session erstellen
+sessionsRouter.post('/', (_req, res) => {
+  const session: Session = {
+    id: createSessionId(),
+    deckType: 'fibonacci',
+    participants: [],
+    revealed: false,
+    createdAt: Date.now(),
   }
-  const value: unknown = (body as Record<string, unknown>)[field]
-  return value
-}
+  sessions.set(session.id, session)
+  res.status(201).json(session)
+})
 
-// A participant joins a session. The body is `unknown`: we do not know what
-// the client actually sent, so we check it step by step.
-sessionsRouter.post(
-  '/sessions/:sessionId/participants',
-  (
-    req: Request<SessionParams>,
-    res: Response<ParticipantView | ErrorResponse>,
-  ) => {
-    const session = findSession(req.params.sessionId)
-    if (!session) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
-    }
+// Todo 8: GET /api/sessions/:id – Eine Session abrufen
+sessionsRouter.get('/:id', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+  res.json(session)
+})
 
-    const body: unknown = req.body
-    const hasNameField =
-      typeof body === 'object' && body !== null && 'name' in body
-    if (!hasNameField) {
-      res.status(400).json({ error: 'The name is missing.' })
-      return
-    }
-    const rawName: unknown = body.name
-    if (typeof rawName !== 'string') {
-      res.status(400).json({ error: 'The name must be a string.' })
-      return
-    }
-    const name = rawName.trim()
-    if (name === '') {
-      res.status(400).json({ error: 'The name must not be empty.' })
-      return
-    }
+// Todo 9: DELETE /api/sessions/:id – Session löschen (auch wenn noch Leute drin sind)
+sessionsRouter.delete('/:id', (req, res) => {
+  const deleted = sessions.delete(req.params.id)
+  if (!deleted) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+  res.status(204).end()
+})
 
-    // Joining is idempotent: if someone with this name already sits at the table,
-    // the client gets exactly that participant back (200) instead of a new one.
-    // This prevents duplicates when someone joins twice or reloads.
-    const existing = findParticipantByName(session, name)
-    if (existing) {
-      const existingView = toParticipantView(existing, session.revealed)
-      res.status(200).json(existingView)
-      return
-    }
+// Todo 10: POST /api/sessions/:id/participants – Session beitreten
+// Idempotent: Existiert die ID schon, wird kein zweiter Eintrag erstellt (wegen StrictMode)
+sessionsRouter.post('/:id/participants', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
 
-    // Mutating server state directly is fine here (push, splice, ...).
-    // React state, however, must NEVER be mutated; always create new copies there.
-    const participant = addParticipant(session, name)
-    const view = toParticipantView(participant, session.revealed)
-    res.status(201).json(view)
-  },
-)
+  // Body auslesen. Wir wissen noch nicht, ob die Werte stimmen, deshalb "unknown"
+  const { id, name } = (req.body ?? {}) as { id?: unknown; name?: unknown }
 
-// A participant leaves a session.
-sessionsRouter.delete(
-  '/sessions/:sessionId/participants/:participantId',
-  // On success (204) there is no body, so only the error type appears.
-  (req: Request<ParticipantParams>, res: Response<ErrorResponse>) => {
-    const session = findSession(req.params.sessionId)
-    if (!session) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
-    }
-    const wasRemoved = removeParticipant(session, req.params.participantId)
-    if (!wasRemoved) {
-      res.status(404).json({ error: 'Participant not found.' })
-      return
-    }
-    res.status(204).end()
-  },
-)
+  if (typeof id !== 'string' || id.trim() === '') {
+    sendError(res, 400, 'Teilnehmer-ID fehlt')
+    return
+  }
+  if (typeof name !== 'string' || name.trim() === '') {
+    sendError(res, 400, 'Name darf nicht leer sein')
+    return
+  }
 
-// Pick, change or retract a card. Body: { "vote": "5" } or { "vote": null }.
-// PUT, because the client replaces the whole value of the "vote" resource.
-// Sending the same card twice changes nothing (idempotent).
-sessionsRouter.put(
-  '/sessions/:sessionId/participants/:participantId/vote',
-  (
-    req: Request<ParticipantParams>,
-    res: Response<ParticipantView | ErrorResponse>,
-  ) => {
-    const session = findSession(req.params.sessionId)
-    if (!session) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
+  const existing = session.participants.find((p) => p.id === id)
+  if (existing) {
+    // Schon in der Session: nur Name und Zeitstempel aktualisieren
+    existing.name = name.trim()
+    existing.lastSeen = Date.now()
+  } else {
+    // Neu: Teilnehmer hinzufügen, noch ohne Stimme
+    const participant: Participant = {
+      id,
+      name: name.trim(),
+      vote: null,
+      lastSeen: Date.now(),
     }
-    const participant = findParticipant(session, req.params.participantId)
-    if (!participant) {
-      res.status(404).json({ error: 'Participant not found.' })
-      return
-    }
-    // 409 Conflict: the request is valid but does not fit the current state.
-    if (session.revealed) {
-      res
-        .status(409)
-        .json({ error: 'The cards are revealed. Start a new round.' })
-      return
-    }
+    session.participants.push(participant)
+  }
 
-    const vote = readField(req.body, 'vote')
-    if (vote === null) {
-      participant.vote = null
-      const retractedView = toParticipantView(participant, session.revealed)
-      res.status(200).json(retractedView)
-      return
-    }
-    if (typeof vote !== 'string') {
-      res.status(400).json({ error: 'The card must be a string or null.' })
-      return
-    }
-    const cards = DECKS[session.deck]
-    if (!cards.includes(vote)) {
-      res.status(400).json({ error: 'This card is not in the deck.' })
-      return
-    }
+  res.json(session)
+})
 
-    participant.vote = vote
-    const view = toParticipantView(participant, session.revealed)
-    res.status(200).json(view)
-  },
-)
+// Todo 11: DELETE /api/sessions/:id/participants/:participantId – Session verlassen
+sessionsRouter.delete('/:id/participants/:participantId', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
 
-// Reveal or start a new round. Body: { "revealed": true } or { "revealed": false }.
-// false starts a new round: all votes are cleared.
-sessionsRouter.put(
-  '/sessions/:sessionId/revealed',
-  (req: Request<SessionParams>, res: Response<SessionView | ErrorResponse>) => {
-    const session = findSession(req.params.sessionId)
-    if (!session) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
-    }
-    const revealed = readField(req.body, 'revealed')
-    if (typeof revealed !== 'boolean') {
-      res.status(400).json({ error: 'revealed must be true or false.' })
-      return
-    }
+  const countBefore = session.participants.length
+  session.participants = session.participants.filter(
+    (p) => p.id !== req.params.participantId,
+  )
 
-    session.revealed = revealed
-    if (!revealed) {
-      clearVotes(session)
-    }
-    const view = toSessionView(session)
-    res.status(200).json(view)
-  },
-)
+  if (session.participants.length === countBefore) {
+    sendError(res, 404, 'Teilnehmer nicht gefunden')
+    return
+  }
 
-// Switch the deck. Body: { "deck": "tshirt" }.
-// Old votes do not fit the new deck ('8' does not exist for T-shirts),
-// so a switch always starts a new, hidden round.
-sessionsRouter.put(
-  '/sessions/:sessionId/deck',
-  (req: Request<SessionParams>, res: Response<SessionView | ErrorResponse>) => {
-    const session = findSession(req.params.sessionId)
-    if (!session) {
-      res.status(404).json({ error: 'Session not found.' })
-      return
-    }
-    const deck = readField(req.body, 'deck')
-    if (!isDeckId(deck)) {
-      res.status(400).json({ error: 'Unknown deck.' })
-      return
-    }
+  res.status(204).end()
+})
 
-    session.deck = deck
-    session.revealed = false
-    clearVotes(session)
-    const view = toSessionView(session)
-    res.status(200).json(view)
-  },
-)
+// Todo 12: PUT /api/sessions/:id/vote – Karte wählen (oder mit null zurückziehen)
+sessionsRouter.put('/:id/vote', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  const { participantId, card } = (req.body ?? {}) as {
+    participantId?: unknown
+    card?: unknown
+  }
+
+  if (typeof participantId !== 'string' || participantId.trim() === '') {
+    sendError(res, 400, 'Teilnehmer-ID fehlt')
+    return
+  }
+
+  // card muss null sein (Stimme zurückziehen) oder eine Karte aus dem aktiven Deck
+  if (card !== null && (typeof card !== 'string' || !isCardInDeck(card, session.deckType))) {
+    sendError(res, 400, 'Karte gehört nicht zum aktiven Deck')
+    return
+  }
+
+  const participant = session.participants.find((p) => p.id === participantId)
+  if (!participant) {
+    sendError(res, 404, 'Teilnehmer nicht gefunden')
+    return
+  }
+
+  if (session.revealed) {
+    sendError(res, 409, 'Karten sind schon aufgedeckt. Zuerst eine neue Runde starten.')
+    return
+  }
+
+  participant.vote = card
+  participant.lastSeen = Date.now()
+  res.json(session)
+})
+
+// Todo 13: PUT /api/sessions/:id/deck – Deck für alle wechseln
+sessionsRouter.put('/:id/deck', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  const { deckType } = (req.body ?? {}) as { deckType?: unknown }
+
+  if (!isDeckType(deckType)) {
+    sendError(res, 400, 'Unbekanntes Deck')
+    return
+  }
+
+  // Gleiches Deck nochmals gewählt: nichts ändern, damit keine Stimmen verloren gehen
+  if (session.deckType === deckType) {
+    res.json(session)
+    return
+  }
+
+  session.deckType = deckType
+
+  // Alte Karten passen nicht ins neue Deck: alle Stimmen löschen und zudecken
+  for (const participant of session.participants) {
+    participant.vote = null
+  }
+  session.revealed = false
+
+  res.json(session)
+})
+
+// Todo 14: POST /api/sessions/:id/reveal – Alle Karten aufdecken
+sessionsRouter.post('/:id/reveal', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+   session.revealed = true
+  res.json(session)
+})
+
+// Todo 15: POST /api/sessions/:id/reset – Neue Runde starten
+// Alle Stimmen löschen und zudecken. Deck und Teilnehmende bleiben.
+sessionsRouter.post('/:id/reset', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  for (const participant of session.participants) {
+    participant.vote = null
+  }
+  session.revealed = false
+
+  res.json(session)
+})

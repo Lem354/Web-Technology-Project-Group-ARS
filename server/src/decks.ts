@@ -1,17 +1,16 @@
-import type { DeckId } from './types.ts'
+import { Deck, DeckType } from './types.js'
 
-// Cards are always strings. The frontend computes the average
-// (and, for T-shirt sizes, the mapping to numbers).
-export const DECKS: Record<DeckId, string[]> = {
-  fibonacci: ['0', '1', '2', '3', '5', '8', '13', '21', '?'],
-  tshirt: ['XS', 'S', 'M', 'L', 'XL'],
-}
-
-// Checks an unknown value (e.g. from the request body) for a valid deck ID.
-export function isDeckId(value: unknown): value is DeckId {
-  if (typeof value !== 'string') {
-    return false
-  }
-  const isKnownDeck = Object.hasOwn(DECKS, value)
-  return isKnownDeck
+// Alle verfügbaren Decks. Der Schlüssel ist der DeckType.
+// Record<DeckType, Deck> sorgt dafür, dass für JEDEN DeckType ein Deck existiert
+export const DECKS: Record<DeckType, Deck> = {
+    fibonacci: { 
+        type: 'fibonacci',
+        label: 'Fibonacci',
+        cards: ['0', '1', '2', '3', '5', '8', '13', '21', '?'],
+    },
+    tshirt: {
+        type: 'tshirt',
+        label: 'T-Shirt-Grössen',
+    cards: ['XS', 'S', 'M', 'L', 'XL'],
+  },
 }
