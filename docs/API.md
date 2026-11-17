@@ -12,7 +12,8 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 
 - Jede Route, die eine Session verändert, gibt die **komplette aktualisierte Session** zurück.
   So zeigt das Frontend den neuen Stand sofort an, ohne auf das nächste Polling zu warten.
-- Fehler kommen immer im Format `{ "error": "Beschreibung" }` zurück (Type `ApiError`).
+- Fehler kommen immer im Format `{ "error": "Beschreibung" }` zurück (Type `ApiError`), auch bei
+  unbekannten `/api`-Routen (404) und ungültigem JSON im Body (400).
 - Abgeleitete Werte wie Durchschnitt, «alle haben abgestimmt» und Einigkeit liefert der Server
   **nicht**. Das Frontend berechnet sie aus `participants` und `revealed` (Single Source of Truth).
 
@@ -23,9 +24,10 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 | 200  | OK          | Anfrage erfolgreich, Daten im Body                                             |
 | 201  | Created     | Neue Session erstellt                                                          |
 | 204  | No Content  | Erfolgreich gelöscht, kein Body                                                |
-| 400  | Bad Request | Ungültige Eingabe (z. B. leerer Name, Karte nicht im Deck)                     |
-| 404  | Not Found   | Session oder Teilnehmer existiert nicht                                        |
+| 400  | Bad Request | Ungültige Eingabe (z. B. leerer Name, Karte nicht im Deck, kaputtes JSON)      |
+| 404  | Not Found   | Session, Teilnehmer oder Route existiert nicht                                 |
 | 409  | Conflict    | Aktion im aktuellen Zustand nicht erlaubt (z. B. abstimmen nach dem Aufdecken) |
+| 500  | Error       | Unerwarteter Fehler im Server (wird im Server-Terminal ausgegeben)             |
 
 ## Routen
 
