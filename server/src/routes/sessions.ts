@@ -215,3 +215,14 @@ sessionsRouter.put('/:id/deck', (req, res) => {
 
   res.json(session)
 })
+
+// Todo 14: POST /api/sessions/:id/reveal – Alle Karten aufdecken
+sessionsRouter.post('/:id/reveal', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+   session.revealed = true
+  res.json(session)
+})

@@ -77,7 +77,8 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 - **deck:** Wechselt das Deck für alle. Setzt alle Stimmen zurück und deckt die Karten zu,
   weil die alten Karten nicht ins neue Deck passen. Wird dasselbe Deck nochmals gewählt,
   ändert sich nichts (die Stimmen bleiben). Unbekanntes Deck → 400.
-- **reveal:** Deckt alle Karten auf.
+- **reveal:** Deckt alle Karten auf. Nochmals aufdecken ist kein Fehler (200), damit es
+  nicht stört, wenn zwei Personen fast gleichzeitig klicken.
 - **reset:** Setzt alle Stimmen auf `null` und `revealed` auf `false`. Das Deck bleibt.
 
 ## Noch offen
