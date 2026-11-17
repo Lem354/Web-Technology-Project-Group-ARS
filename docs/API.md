@@ -14,6 +14,11 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
   So zeigt das Frontend den neuen Stand sofort an, ohne auf das nächste Polling zu warten.
 - Fehler kommen immer im Format `{ "error": "Beschreibung" }` zurück (Type `ApiError`), auch bei
   unbekannten `/api`-Routen (404) und ungültigem JSON im Body (400).
+- **Stimmen sind bis zum Aufdecken verdeckt.** Alle Session-Antworten laufen über
+  `toSessionView` (Type `SessionView`): Solange `revealed` false ist, ist `vote` bei allen
+  Teilnehmenden `null`, auch bei der eigenen Karte. `hasVoted` zeigt, wer schon abgestimmt hat.
+  So kann niemand im Netzwerk-Tab des Browsers die Karten der anderen sehen.
+  `lastSeen` braucht nur der Server und wird nicht mitgeschickt.
 - Abgeleitete Werte wie Durchschnitt, «alle haben abgestimmt» und Einigkeit liefert der Server
   **nicht**. Das Frontend berechnet sie aus `participants` und `revealed` (Single Source of Truth).
 
@@ -44,8 +49,8 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 | Methode | Route               | Body | Antwort                | Fehler |
 | ------- | ------------------- | ---- | ---------------------- | ------ |
 | GET     | `/api/sessions`     | –    | 200 `SessionSummary[]` | –      |
-| POST    | `/api/sessions`     | –    | 201 `Session`          | –      |
-| GET     | `/api/sessions/:id` | –    | 200 `Session`          | 404    |
+| POST    | `/api/sessions`     | –    | 201 `SessionView`          | –      |
+| GET     | `/api/sessions/:id` | –    | 200 `SessionView`          | 404    |
 | DELETE  | `/api/sessions/:id` | –    | 204                    | 404    |
 
 - **GET /api/sessions** liefert für die Home-Seite nur ID und Teilnehmerzahl, nicht die ganze Session.
@@ -57,7 +62,7 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 
 | Methode | Route                                           | Body           | Antwort       | Fehler   |
 | ------- | ----------------------------------------------- | -------------- | ------------- | -------- |
-| POST    | `/api/sessions/:id/participants`                | `{ id, name }` | 200 `Session` | 400, 404 |
+| POST    | `/api/sessions/:id/participants`                | `{ id, name }` | 200 `SessionView` | 400, 404 |
 | DELETE  | `/api/sessions/:id/participants/:participantId` | –              | 204           | 404      |
 
 - **POST** ist idempotent: Existiert die `id` schon, wird kein zweiter Eintrag erstellt,
@@ -69,13 +74,14 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 
 | Methode | Route                      | Body                      | Antwort       | Fehler        |
 | ------- | -------------------------- | ------------------------- | ------------- | ------------- |
-| PUT     | `/api/sessions/:id/vote`   | `{ participantId, card }` | 200 `Session` | 400, 404, 409 |
-| PUT     | `/api/sessions/:id/deck`   | `{ deckType }`            | 200 `Session` | 400, 404      |
-| POST    | `/api/sessions/:id/reveal` | –                         | 200 `Session` | 404           |
-| POST    | `/api/sessions/:id/reset`  | –                         | 200 `Session` | 404           |
+| PUT     | `/api/sessions/:id/vote`   | `{ participantId, card }` | 200 `SessionView` | 400, 404, 409 |
+| PUT     | `/api/sessions/:id/deck`   | `{ deckType }`            | 200 `SessionView` | 400, 404      |
+| POST    | `/api/sessions/:id/reveal` | –                         | 200 `SessionView` | 404           |
+| POST    | `/api/sessions/:id/reset`  | –                         | 200 `SessionView` | 404           |
 
 - **vote:** `card` muss im aktiven Deck vorkommen, sonst 400. Nach dem Aufdecken gibt es 409.
-  Mit `card: null` kann man seine Stimme zurückziehen.
+  Mit `card: null` kann man seine Stimme zurückziehen. Die Antwort zeigt beim Abstimmenden
+  `hasVoted: true`, aber `vote: null`. Die eigene Karte merkt sich das Frontend selbst.
 - **deck:** Wechselt das Deck für alle. Setzt alle Stimmen zurück und deckt die Karten zu,
   weil die alten Karten nicht ins neue Deck passen. Wird dasselbe Deck nochmals gewählt,
   ändert sich nichts (die Stimmen bleiben). Unbekanntes Deck → 400.
@@ -86,4 +92,15 @@ Die Daten liegen nur im Arbeitsspeicher. Nach einem Neustart des Servers sind al
 ## Noch offen
 
 - **Karteileichen (Todo 17):** Wie inaktive Teilnehmende erkannt und entfernt werden,
-  legen wir später fest. Vorbereitet ist das Feld `lastSeen` im Type `Participant`.
+  legen wir später fest. Vorbereitet ist das Feld `lastSeen` im Type `Participant` (nur auf dem Server).
+
+## Types (Antworten)
+
+| Type              | Felder                                                                   |
+| ----------------- | ------------------------------------------------------------------------ |
+| `SessionSummary`  | `id`, `participantCount`                                                 |
+| `SessionView`     | `id`, `deckType`, `revealed`, `createdAt`, `participants: ParticipantView[]` |
+| `ParticipantView` | `id`, `name`, `hasVoted`, `vote` (Karte oder `null`, bis zum Aufdecken immer `null`) |
+| `ApiError`        | `error`                                                                  |
+
+Die Types stehen in `server/src/types.ts` und identisch in `client/src/types/index.ts`.
