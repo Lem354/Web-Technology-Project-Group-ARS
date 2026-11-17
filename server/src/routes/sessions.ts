@@ -226,3 +226,20 @@ sessionsRouter.post('/:id/reveal', (req, res) => {
    session.revealed = true
   res.json(session)
 })
+
+// Todo 15: POST /api/sessions/:id/reset – Neue Runde starten
+// Alle Stimmen löschen und zudecken. Deck und Teilnehmende bleiben.
+sessionsRouter.post('/:id/reset', (req, res) => {
+  const session = sessions.get(req.params.id)
+  if (!session) {
+    sendError(res, 404, 'Session nicht gefunden')
+    return
+  }
+
+  for (const participant of session.participants) {
+    participant.vote = null
+  }
+  session.revealed = false
+
+  res.json(session)
+})
